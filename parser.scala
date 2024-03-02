@@ -1,11 +1,18 @@
 package parser
 
-import parsley.character.{whitespace, string}
-import parsley.Parsley, Parsley.{many, atomic, some}
-import parsley.errors.combinator.ErrorMethods //for hide
-import parsley.combinator.{sepBy, option}
+import os.Path
+import os.RelPath
+import parsley.Parsley
 import parsley.character
-import os.{Path, RelPath}
+import parsley.character.string
+import parsley.character.whitespace
+import parsley.combinator.option
+import parsley.combinator.sepBy
+import parsley.errors.combinator.ErrorMethods
+
+import java.io.File
+
+import Parsley.{many, atomic, some}
 
 val skipWhitespace = many(whitespace.void).void.hide
 def symbol(str: String) = atomic(string(str))
@@ -23,7 +30,7 @@ extension (a: Parsley[String])
 
 object Dir:
 
-  val atom = option(symbol("..") | symbol(".") | str)
+  def atom = option(symbol("..") | symbol(".") | str)
 
   def subPath =
     for xs <- sepBy(atom, symbol("/"))
@@ -31,29 +38,55 @@ object Dir:
 
   def absPath = symbol("/") concat subPath
 
-  // TODO produces a Path from RelPath
-  def path: Parsley[Path | RelPath] = (subPath | absPath).map(p =>
-    if p.contains(".") then os.RelPath(p) else os.Path(p)
-  )
+  def path: Parsley[Path] =
+    for
+      p <- subPath | absPath
+      p1 = if p.contains(".") then File(p).getCanonicalPath() else p
+    yield os.Path(p1)
 
 end Dir
 
 object Command:
 
-  import ast.Command as mc
+  import ast.Command.*
+  import ast.FilterOption.*
 
   def cd = for
     _ <- lexeme(symbol("cd"))
-    p <- lexeme(Dir.absPath)
-  yield mc.cd(os.Path(p))
+    p <- lexeme(Dir.path)
+  yield CD(p)
 
-  def lo = lexeme(symbol("lo")) #> mc.lo
+  def cat = lexeme(symbol("cat")) #> CAT
 
-  def cat = lexeme(symbol("cat")) #> mc.cat
+  def filterOption =
+    val suffix = for
+      _ <- lexeme(symbol("suffix"))
+      _ <- lexeme(symbol("."))
+      s <- lexeme(str)
+    yield SUFFIX("." + s)
 
-  def ls = lexeme(symbol("ls")) #> mc.ls
+    val regx = for
+      _ <- lexeme(symbol("regx"))
+      s <- lexeme(str)
+    yield REGX(s)
 
-  def atom = cd | lo | cat | ls
+    symbol("isFile") #> ISFILE
+      | symbol("isDir") #> ISDIR
+      | regx
+      | suffix
+
+  def filter = for
+    _ <- lexeme(symbol("filter"))
+    ops <- filterOption
+  yield FILTER(ops)
+
+  def rm = lexeme(symbol("rm")) #> RM
+
+  def decompress = lexeme(symbol("decompress")) #> DECOMPRESS
+
+  def flatten = lexeme(symbol("flatten")) #> FLATTEN
+
+  def atom = cd | cat | filter | rm | decompress | flatten
 
   def commands = for
     a <- atom
