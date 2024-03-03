@@ -64,7 +64,7 @@ def interpret[T <: Path](
         case `RM` =>
           content.foreach(os.remove(_));
           CommandContext(currentDir, Iterable.empty)
-        case FLATTEN =>
+        case `FLATTEN` =>
           for
             f <- os.walk(currentDir)
             if currentDir.relativeTo(f) != os.up
@@ -79,7 +79,7 @@ def interpret[T <: Path](
               println(s"moved ${rel} to ${filename}")
 
           CommandContext(currentDir, Iterable.empty)
-        case DECOMPRESS =>
+        case `DECOMPRESS` =>
           content.foreach(adapter.decompress(_));
           CommandContext(currentDir, Iterable.empty)
 
